@@ -95,7 +95,7 @@ def linear_rocking():
         tool_position[2] = i
         
         # append Z step to labview_list
-        labview_list.append(str('z_abs,' + str(tool_position[2])))
+        labview_list.append(str('z_step_abs,' + str(tool_position[2])))
         
         # loop raster scan over Y range
         for i in y_range:
@@ -105,7 +105,7 @@ def linear_rocking():
             tool_position[3] = a_range[j]
             
             # append A rotation to labview_list
-            labview_list.append(str('a_abs,' + str(tool_position[3])))
+            labview_list.append(str('a_step_abs,' + str(tool_position[3])))
 
             # loop over a single raster XY layer
             tool_position[0] = raster_layer[0,0]
@@ -144,5 +144,4 @@ def linear_rocking():
     # toggle between tool_position_list and labview_list for either cut engine
     #return tool_position_list
     return labview_list
-linear_rocking()
 
