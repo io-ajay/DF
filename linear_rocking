@@ -1,4 +1,5 @@
 # Config ==================================================
+# Config 
 # Units: mm, mm/sec, degrees
 import numpy as np
 
@@ -10,19 +11,20 @@ y_dimension       = 10
 # laser_cut_config
 jump_speed        = 2000   
 mark_speed        = 100    
-xy_spacing        = .1#0.005
-z_spacing         = .5#.05
-beam_angle        = 3
-precision         = 4
+xy_spacing        = .005
+z_spacing         = .05
+#beam_angle        = 3
+#precision         = 4
 
 #desired_cut
 initial_xy        = np.array([-5,0])
 final_xy          = np.array([5,0])
 z_depth           = 3.5
 kerf_angle        = 7
-top_width_kerf    = round(z_depth*np.sin(np.radians(kerf_angle)), precision)
+#top_width_kerf    = round(z_depth*np.sin(np.radians(kerf_angle)), precision)
 bottom_width      = 0#top_width_kerf
 kerf_shape        = 0#top_width_kerf/2
+
 
 # not implemented yet:
 #focusDiameter     = .02
@@ -30,9 +32,34 @@ kerf_shape        = 0#top_width_kerf/2
 #PulseRate         = 5000
 #xy_overshoot      = .25
 #z_overshoot       = .5
-#origin_x          = 0
-#origin_y          = 0
-#physical_rotation = 0
+
+
+# Labview Config File
+'''
+{"block":{
+    "z_dimension": 3.5,
+    "x_dimension": 10,
+    "y_dimension": 10},
+    "origin_x": 0,
+    "origin_y": 0,
+    "physical_rotation": 0},
+"desired_cut":{
+    "cut_process":"linear_pyramid",
+    "initial_xy": np.array([-5,0]),
+    "final_xy": np.array([5,0]),
+    "z_depth": 3.5,
+    "bottom_width": 0,
+    "kerf_shape": 0,
+    "num_of_seeds":"max"},
+"laser_cut_config":{
+    "jump_speed":   2000,
+    "mark_speed":   200,
+    "kerf_angle":   7,
+    "xy_spacing":   0.005,
+    "z_spacing":    0.05,
+    "z_final_overshoot":0.5}
+}
+'''
 
 # linear_rocking ==================================================
 
@@ -43,7 +70,11 @@ import sys
 
 
 def linear_rocking():
+    # additional config info
+    beam_angle = 3
     precision = 4
+    top_width_kerf    = round(z_depth*np.sin(np.radians(kerf_angle)), precision)
+    
     # Define first raster side1 with three points (x,y,z)
     p_side1 = np.array([initial_xy[0], initial_xy[1] - top_width_kerf/2, z_dimension])
     q_side1 = np.array([final_xy[0]  , final_xy[1]   - top_width_kerf/2, z_dimension])
@@ -95,7 +126,7 @@ def linear_rocking():
         tool_position[2] = i
         
         # append Z step to labview_list
-        labview_list.append(str('z_step_abs,' + str(tool_position[2])))
+        labview_list.append(str('z_abs,' + str(tool_position[2])))
         
         # loop raster scan over Y range
         for i in y_range:
@@ -105,7 +136,7 @@ def linear_rocking():
             tool_position[3] = a_range[j]
             
             # append A rotation to labview_list
-            labview_list.append(str('a_step_abs,' + str(tool_position[3])))
+            labview_list.append(str('a_abs,' + str(tool_position[3])))
 
             # loop over a single raster XY layer
             tool_position[0] = raster_layer[0,0]
@@ -144,4 +175,3 @@ def linear_rocking():
     # toggle between tool_position_list and labview_list for either cut engine
     #return tool_position_list
     return labview_list
-
