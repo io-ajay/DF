@@ -1,0 +1,148 @@
+# Config ==================================================
+# Units: mm, mm/sec, degrees
+import numpy as np
+
+# block
+z_dimension       = 3.5
+x_dimension       = 10
+y_dimension       = 10
+
+# laser_cut_config
+jump_speed        = 2000   
+mark_speed        = 100    
+xy_spacing        = .1#0.005
+z_spacing         = .5#.05
+beam_angle        = 3
+precision         = 4
+
+#desired_cut
+initial_xy        = np.array([-5,0])
+final_xy          = np.array([5,0])
+z_depth           = 3.5
+kerf_angle        = 7
+top_width_kerf    = round(z_depth*np.sin(np.radians(kerf_angle)), precision)
+bottom_width      = 0#top_width_kerf
+kerf_shape        = 0#top_width_kerf/2
+
+# not implemented yet:
+#focusDiameter     = .02
+#rayleighLength    = .6
+#PulseRate         = 5000
+#xy_overshoot      = .25
+#z_overshoot       = .5
+#origin_x          = 0
+#origin_y          = 0
+#physical_rotation = 0
+
+# linear_rocking ==================================================
+
+# The code in its current form can stably output a zero taper rocking cut for a >= 3 degree kerf angle.
+import json
+import numpy as np
+import sys
+
+
+def linear_rocking():
+    precision = 4
+    # Define first raster side1 with three points (x,y,z)
+    p_side1 = np.array([initial_xy[0], initial_xy[1] - top_width_kerf/2, z_dimension])
+    q_side1 = np.array([final_xy[0]  , final_xy[1]   - top_width_kerf/2, z_dimension])
+    r_side1 = np.array([initial_xy[0], initial_xy[1] - bottom_width/2 + kerf_shape , z_dimension - z_depth])
+
+    # Define second raster side2 with three points (x,y,z)
+    p_side2 = np.array([initial_xy[0], initial_xy[1] + top_width_kerf/2, z_dimension])
+    q_side2 = np.array([final_xy[0]  , final_xy[1]   + top_width_kerf/2, z_dimension])
+    r_side2 = np.array([initial_xy[0], initial_xy[1] + bottom_width/2 + kerf_shape, z_dimension - z_depth])
+
+    # Define raster_layer in XY with 4 corners (this plane will change shape as we iterate over Z)
+    raster_layer = np.array([
+        [p_side2[0], p_side2[1]],
+        [q_side2[0], q_side2[1]],
+        [q_side1[0], q_side1[1]],
+        [p_side1[0], p_side1[1]]])
+    
+    # Define z_range, the range over which the cut will raster in Z
+    z_range = np.around(np.linspace(z_dimension - z_depth, z_dimension, int(round(z_depth/z_spacing, 0))),precision)
+    z_range = z_range[::-1]
+
+    # Define y_range, the range over which the cut will raster in Y
+    y_range = np.around(np.linspace(raster_layer[3,1], raster_layer[0,1], int(round(np.absolute(raster_layer[0,1] - raster_layer[3,1])/xy_spacing, 0))), precision)
+    y_range = y_range[::-1]
+
+    # Define a_range, the range of values of which the A stage 'rocks'
+    side2_angle = round(np.degrees(np.arctan((p_side2[1] - r_side2[1]))/(p_side2[2] - r_side2[2])),precision)
+    side1_angle = round(np.degrees(np.arctan((p_side1[1] - r_side1[1]))/(p_side1[2] - r_side1[2])),precision)
+
+    a_max   = side2_angle - .5*beam_angle
+    a_min   = side1_angle + .5*beam_angle
+
+    a_range = np.around(np.linspace(a_max, a_min, np.size(y_range)), precision)
+    a_range = a_range[::-1]
+    # This computation is stable for values of bottom_width and kerf_shape that are within the y bounds of top_width_kerf. This works for OG but may need to be reworked for more complex processes 
+    # a_range computation has to be made into a function and recomputed over raster_layers
+
+    # initialize tool_position and tool_position_list
+    tool_position      = np.array([0., 0., 0., 0., 0., 0.])
+    tool_position_list = np.array([0., 0., 0., 0., 0., 0.])
+    #initialize labview_list
+    labview_list = []
+    #initialize C rotation 
+    labview_list.append(str('c_abs,' + str(tool_position[4])))
+
+    # loop raster layers over Z
+    for i in z_range:
+        # generate raster_layer (not implemented yet, currently using fixed raster_layer for straight sidewalls)
+        tool_position[2] = i
+        
+        # append Z step to labview_list
+        labview_list.append(str('z_abs,' + str(tool_position[2])))
+        
+        # loop raster scan over Y range
+        for i in y_range:
+            # add A rotation from a_range array
+            a_range_index    = np.where(y_range == i)
+            j = np.asscalar(a_range_index[0])
+            tool_position[3] = a_range[j]
+            
+            # append A rotation to labview_list
+            labview_list.append(str('a_abs,' + str(tool_position[3])))
+
+            # loop over a single raster XY layer
+            tool_position[0] = raster_layer[0,0]
+            tool_position[1] = i
+            # switch laser to jump
+            tool_position[5] = 0 
+            
+            # append tool_position_list
+            tool_position_list = np.vstack((tool_position_list, tool_position))
+            # append labview_list
+            labview_list.append(str('jump,' + str(tool_position[0]) + ' ' + str(tool_position[1])))
+        
+            tool_position[0] = raster_layer[1,0]
+            # switch laser to mark
+            tool_position[5] = 1
+            
+            # append tool_position_list
+            tool_position_list = np.vstack((tool_position_list, tool_position)) 
+            # append labview_list
+            labview_list.append(str('mark,' + str(tool_position[0]) + ' ' + str(tool_position[1])))
+            
+            # switch laser to jump
+            tool_position[5] = 0
+            # append labview_list
+            labview_list.append(str('jump,' + str(tool_position[0]) + ' ' + str(tool_position[1])))
+            
+    # check vector results
+    #print('[x, y, z, a, c, 0jump/1mark]')
+    #np.set_printoptions(threshold = sys.maxsize)        
+    #print(tool_position_list)
+    
+    # check labview result
+    json_string = json.dumps(labview_list)
+    #print(labview_list)
+    
+    # toggle between tool_position_list and labview_list for either cut engine
+    #return tool_position_list
+    return labview_list
+linear_rocking()
+
